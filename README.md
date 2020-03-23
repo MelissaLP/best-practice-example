@@ -1,7 +1,9 @@
 # [PROJECT NAME]
 
 ## Project organization
-
+- PG = project-generated
+- HW = human-writable
+- RO = read only
 ```
 .
 ├── .gitignore
