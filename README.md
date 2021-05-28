@@ -1,33 +1,21 @@
-# [PROJECT NAME]
+# Matched filtering with a glitch bank
 
-## Project organization
-- PG = project-generated
-- HW = human-writable
-- RO = read only
-```
-.
-├── .gitignore
-├── CITATION.md
-├── LICENSE.md
-├── README.md
-├── requirements.txt
-├── bin                <- Compiled and external code, ignored by git (PG)
-│   └── external       <- Any external source code, ignored by git (RO)
-├── config             <- Configuration files (HW)
-├── data               <- All project data, ignored by git
-│   ├── processed      <- The final, canonical data sets for modeling. (PG)
-│   ├── raw            <- The original, immutable data dump. (RO)
-│   └── temp           <- Intermediate data that has been transformed. (PG)
-├── docs               <- Documentation notebook for users (HW)
-│   ├── manuscript     <- Manuscript source, e.g., LaTeX, Markdown, etc. (HW)
-│   └── reports        <- Other project reports and notebooks (e.g. Jupyter, .Rmd) (HW)
-├── results
-│   ├── figures        <- Figures for the manuscript or reports (PG)
-│   └── output         <- Other output for the manuscript or reports (PG)
-└── src                <- Source code for this project (HW)
+In this repository you will find a code to perform matched filtering method with blip glitches generate artificially with a Generative Adversarial Network. The output of this code is the signal-to-noise ratio calculation. This work forms part of the workshop "Best Practices for Writing Reproducible Code".
 
-```
+## Prerequisites
 
+To perform the analysis is necessary to install standard packages of gravitational waves analysis: [PyCBC](https://pycbc.org) and [GWpy](https://gwpy.github.io/docs/stable/). This code uses Python 3.6 or higher.
+
+
+## Installation
+
+To install this you can:
+
+`git clone git@github.com:MelissaLP/best-practice-example.git`
+
+## Contact information
+
+If you have questions or wish to contribute send me an email: m.lopez@uu.nl
 
 ## License
 
