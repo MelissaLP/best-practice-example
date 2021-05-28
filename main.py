@@ -1,68 +1,98 @@
+import re
+import itertools
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
+from pycbc.filter import matched_filter
 from gwpy.timeseries import TimeSeries
 from gwpy.signal import filter_design
-from gwpy.plot import Plot
 from gwpy.signal.filter_design import bandpass
 import matplotlib.pyplot as plt
-import matplotlib; matplotlib.use('Agg')
-from pycbc.waveform import get_fd_waveform
-from pycbc.filter import matched_filter, sigmasq, match
-from sklearn.preprocessing import MinMaxScaler
-import numpy as np
-import re
-from numpy import f2py
+import matplotlib
+matplotlib.use('Agg')
 
-#Path to good enough project
-
-#Read GPS times of real blips
-f=open("./data/raw/gps_times.txt", "r")
-gps=np.array(re.findall(r"[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?", f.read())).astype(float)
-print(gps[0])
-print('potato')
-
-path_template="./data/processed/"; 
-
-#Compute the ASD of the beginning of O2 to whiten
-start = TimeSeries.fetch_open_data('L1', 1164601507.0, 1164601507.0+20); 
-asd_s= start.asd(10, window='hann')
+#####################
+#     Functions     #
+#####################
 
 
+def WhiteningAndPSDComputing(signal, ASD, deltaf):
 
-for j in range(len(gps)):
-    for i in [0,1,10,100,101]:
+    """
+        This function whitens the raw signal and computes the PSD. 
+        It returns a Time Series that matches the size of the template
+        and the PSD for matched filtering technique.
 
-        blip = TimeSeries.fetch_open_data('L1', float(gps[j])-1.0, float(gps[j])+1.0); 
-        
-        # Band-pass filter in [35, 250]
-        bp = bandpass(float(35), float(250), blip.sample_rate)
-        #Notches for the 1st three harminics of the 60 Hz AC
-        notches = [filter_design.notch(line, blip.sample_rate) for line in [60,120,180]]
-        #Concatenate both filters
-        zpk = filter_design.concatenate_zpks(bp, *notches)
-        #Call GPS of blips and return a GPS array
+    Input
+    ______
 
-        #Whiten and band-pass filter
-        #white = data.whiten(0.5,float(0.5/2), window='hann') #whiten the data
-        white_down = blip.filter(zpk, filtfilt=True) #downsample to 2048Hz
-        white_s = white_down.whiten(3,float(3/2), window='hann', asd=asd_s)[int(3627):int(len(white_down)-3627)]
-        white_s= (MinMaxScaler(feature_range=(-1, 1)).fit_transform(np.array(white_s).reshape(-1,1)).flatten())
+       Signal: Time Series to filter and whiten
+       ASD: Frequency Series necessary to whiten
+       deltaf: Parameter to match the template
 
-        deltaf=len(white_s)/4096
-        white_s = TimeSeries(white_s,t0=-1/(deltaf*2), sample_rate=4096,name = "L1")
+    Output
+    ______
+
+       cleaned_signal: Time Series containing cleaned signal
+       PSD: Frequency Series containing signal PSD
+
+    """
+    # Filtering: Band-pass in [35, 250], notches 60Hz harmonics
+    bp = bandpass(float(35), float(250), signal.sample_rate) 
+    notches = [filter_design.notch(line, signal.sample_rate) for line in [60, 120, 180]]
+    zpk = filter_design.concatenate_zpks(bp, *notches)
+   
+    filter_signal = signal.filter(zpk, filtfilt=True)  
+    whiten_signal = filter_signal.whiten(3, 1.5, window='hann', asd=ASD)
+    cut_signal = whiten_signal[int(3627):int(len(whiten_signal)-3627)] # TODO: generalize
+
+    array_signal = np.array(cut_signal).reshape(-1, 1)
+    rescaled_signal = MinMaxScaler(feature_range=(-1, 1)).fit_transform(array_signal).flatten()
+    cleaned_signal = TimeSeries(rescaled_signal, t0=-1/(deltaf*2), sample_rate=4096, name="L1")
+
+    PSD = cleaned_signal.psd(deltaf, deltaf/2)
+
+    return cleaned_signal, PSD
+    
+#####################
+#        Data       #
+#####################
+
+# Read GPS times of real blips
+times = open("./data/raw/gps_times.txt", "r")
+read_times = re.findall(r"[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?", times.read())
+gps = np.asarray(read_times, dtype=float)
+
+# Compute the ASD of the beginning of O2 to whiten
+start = TimeSeries.fetch_open_data('L1', 1164601507.0, 1164601507.0+20)
+ASD = start.asd(10, window='hann')
+
+#####################
+#     MF method     #
+#####################
+
+for i, j in itertools.product([0, 1, 10, 100, 101], np.arange(len(gps)),):
+
+    # Call the input signal and the template to convolve 
+    raw_signal = TimeSeries.fetch_open_data('L1', (gps[j])-1.0, (gps[j])+1.0)
+    template = np.asarray(np.load("./data/processed/fake_glitch_"+str(
+        i)+'.npy')[0], dtype=float)
+
+    #To match the template and the signal
+    deltaf = len(template)/4096 
+
+    #t0 represents the initial time, where the middle of the template is at t=0
+    template = TimeSeries(template, t0=-1/(deltaf*2), sample_rate=4096, name="L1")
+
+    signal, PSD = WhiteningAndPSDComputing(raw_signal, ASD, deltaf)
+
+    snrs = matched_filter(template.to_pycbc(),
+                          signal.to_pycbc(),
+                          psd=PSD.to_pycbc())
 
 
-        #Plot version with and without notches
-        fig=plt.figure(figsize=(12,5)); 
-        plt.plot((np.array(white_s)), label='Original', alpha=0.7) 
-        plt.ylabel('Amplitude'); plt.xlabel('Data points')
-        plt.title('LIGO-Livingston strain data whitened, band-passed in range ['+str(35)+', '+str(250)+'] $Hz$')
-        plt.legend(); plt.show()
-
-       
-        template= TimeSeries(np.asarray(np.load(path_template+"fake_glitch_"+str(i)+'.npy')[0], dtype=float),t0=-1/(deltaf*2), sample_rate=4096,name = "L1")
-
-        PSD = white_s.psd(deltaf,float(deltaf/2))
-        snrs=matched_filter(template.to_pycbc(),white_s.to_pycbc(), psd=PSD.to_pycbc())
-        print(max(np.array(snrs)[100:800]))
-        fig=plt.figure(figsize=(12,5)); 
-        plt.plot(np.array(snrs)); plt.ylabel('Signal-to-noise ratio (SNR)'); plt.xlabel('Data points')
-        plt.savefig('./results/figures/snr_'+str(i)+'_'+str(j)+'.png');plt.close()
+    fig = plt.figure(figsize=(12, 5))
+    plt.plot(np.array(snrs))
+    plt.ylabel('Signal-to-noise ratio (SNR)')
+    plt.xlabel('Data points')
+    plt.savefig('./results/figures/snr_'+str(i)+'_'+str(j)+'.png')
+    plt.close()
